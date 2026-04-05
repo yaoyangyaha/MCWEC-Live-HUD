@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCWEC Live HUD</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="hud-shell">
+    <section class="race-overlay">
+      <div class="center-banner hidden" id="centerBanner">
+        <span class="center-banner-tag" id="centerBannerTag">Race Control</span>
+        <strong class="center-banner-title" id="centerBannerTitle">GREEN FLAG</strong>
+        <span class="center-banner-message" id="centerBannerMessage">Track clear</span>
+      </div>
+    </section>
+
+    <section class="tower">
+      <header class="tower-head">
+        <div class="series-logo">
+          <img class="logo-image hidden" id="logoImage" alt="Series Logo">
+          <div class="logo-mark" id="logoMark"></div>
+          <div class="logo-text">
+            <span class="logo-kicker">LIVE</span>
+            <strong id="title">MCWEC</strong>
+          </div>
+        </div>
+        <div class="session-chip" id="session">RACE</div>
+      </header>
+
+      <section class="flag-banner flag-green" id="flagBanner">
+        <div class="flag-label-wrap">
+          <span class="flag-tag">Race Control</span>
+          <strong id="flagLabel">GREEN FLAG</strong>
+        </div>
+        <span class="flag-message" id="flagMessage">Track clear</span>
+      </section>
+
+      <section class="race-meta">
+        <div class="race-meta-block">
+          <span class="meta-label">TRACK</span>
+          <strong id="track">Monaco GP</strong>
+        </div>
+        <div class="race-meta-block laps-box">
+          <span class="meta-label">Laps Left</span>
+          <strong id="remainingLaps">20</strong>
+        </div>
+      </section>
+
+      <section class="leader-banner">
+        <span class="leader-label">Leader</span>
+        <strong class="leader-name" id="leaderName">Waiting...</strong>
+        <span class="leader-sub" id="leaderSub">等待过线事件</span>
+      </section>
+
+      <section class="board-wrap">
+        <div class="board-head">
+          <span>P</span>
+          <span>DRIVER</span>
+          <span>L</span>
+          <span>GAP</span>
+        </div>
+        <div id="rows" class="board-rows"></div>
+      </section>
+
+      <section class="notice-stack" id="noticeStack"></section>
+
+      <footer class="tower-foot">
+        <span id="status">Disconnected</span>
+        <span>EVENTS <strong id="eventCount">0</strong></span>
+        <span id="updatedAt">--:--:--</span>
+      </footer>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
