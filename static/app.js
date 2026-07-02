@@ -21,6 +21,9 @@ const updatedAtEl = document.getElementById("updatedAt");
 let latestState = null;
 let greenBannerTimer = null;
 let lastBannerMode = "";
+const rowElements = new Map();
+const noticeElements = new Map();
+const FLAG_BANNER_VISIBLE_MS = 10000;
 
 const FLAG_CLASS_MAP = {
   green: "flag-green",
@@ -53,13 +56,13 @@ function formatGap(driver) {
   return `+${(driver.gap_to_leader_ms / 1000).toFixed(3)}`;
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function animateEntry(element, className) {
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
+  window.setTimeout(() => {
+    element.classList.remove(className);
+  }, 260);
 }
 
 function renderFlag(state) {
@@ -81,14 +84,16 @@ function renderFlag(state) {
     greenBannerTimer = null;
   }
 
-  const greenVisibleUntil = (state.flag_changed_at_ms || 0) + 10000;
+  const greenVisibleUntil = (state.flag_changed_at_ms || 0) + FLAG_BANNER_VISIBLE_MS;
   const greenShouldShow = state.flag_state === "green" && Date.now() < greenVisibleUntil;
   const shouldShow = state.final_lap_active || state.flag_state !== "green" || greenShouldShow;
+  const flagBannerVisibleUntil = (state.flag_changed_at_ms || 0) + FLAG_BANNER_VISIBLE_MS;
+  const flagBannerShouldShow = Date.now() < flagBannerVisibleUntil;
 
-  if (state.flag_state === "green" && !greenShouldShow) {
-    flagBannerEl.classList.add("hidden");
+  if (!flagBannerShouldShow) {
+    flagBannerEl.classList.add("is-collapsed");
   } else {
-    flagBannerEl.classList.remove("hidden");
+    flagBannerEl.classList.remove("is-collapsed");
   }
 
   if (shouldShow) {
@@ -112,12 +117,12 @@ function renderFlag(state) {
     }
   }
 
-  if (!state.final_lap_active && state.flag_state === "green" && greenShouldShow) {
+  if (flagBannerShouldShow || (!state.final_lap_active && state.flag_state === "green" && greenShouldShow)) {
     greenBannerTimer = window.setTimeout(() => {
       if (latestState) {
         renderFlag(latestState);
       }
-    }, Math.max(greenVisibleUntil - Date.now(), 0) + 10);
+    }, Math.max(Math.max(flagBannerVisibleUntil, greenVisibleUntil) - Date.now(), 0) + 10);
   }
 
   lastBannerMode = shouldShow ? bannerMode : "";
@@ -125,12 +130,94 @@ function renderFlag(state) {
 
 function renderNotices(state) {
   const notices = state.notices || [];
-  noticeStackEl.innerHTML = notices.slice(0, 3).map((notice) => `
-    <div class="notice-card accent-${escapeHtml(notice.accent || "neutral")}">
-      <div class="notice-title">${escapeHtml(notice.title)}</div>
-      <div class="notice-message">${escapeHtml(notice.message)}</div>
-    </div>
-  `).join("");
+  const nextKeys = new Set();
+  const fragment = document.createDocumentFragment();
+
+  notices.slice(0, 3).forEach((notice) => {
+    const key = `${notice.created_at_ms || 0}:${notice.title || ""}:${notice.message || ""}`;
+    nextKeys.add(key);
+
+    let card = noticeElements.get(key);
+    if (!card) {
+      card = document.createElement("div");
+      card.innerHTML = '<div class="notice-title"></div><div class="notice-message"></div>';
+      noticeElements.set(key, card);
+      animateEntry(card, "enter");
+    }
+
+    card.className = `notice-card accent-${notice.accent || "neutral"}`;
+    card.querySelector(".notice-title").textContent = notice.title || "";
+    card.querySelector(".notice-message").textContent = notice.message || "";
+    fragment.appendChild(card);
+  });
+
+  for (const [key, element] of noticeElements) {
+    if (!nextKeys.has(key)) {
+      noticeElements.delete(key);
+      element.remove();
+    }
+  }
+
+  noticeStackEl.replaceChildren(fragment);
+}
+
+function renderRows(state, globalBestLap) {
+  const nextPlayers = new Set();
+  const fragment = document.createDocumentFragment();
+
+  state.drivers.forEach((driver) => {
+    nextPlayers.add(driver.player);
+    const fastest = driver.best_lap_ms !== null && driver.best_lap_ms === globalBestLap;
+    let row = rowElements.get(driver.player);
+
+    if (!row) {
+      row = document.createElement("div");
+      row.innerHTML = `
+        <div class="position-pill"></div>
+        <div class="driver-cell">
+          <div class="driver-name"></div>
+          <div class="driver-source">
+            <span class="last-lap"></span>
+            <span class="best-lap"></span>
+            <span class="pit-chip hidden">PIT</span>
+          </div>
+        </div>
+        <div class="board-stat"></div>
+        <div class="board-gap"></div>
+      `;
+      rowElements.set(driver.player, row);
+      animateEntry(row, "enter");
+    }
+
+    row.className = `board-row ${driver.position === 1 ? "top" : ""} ${driver.in_pit ? "pit" : ""} ${fastest ? "fastest" : ""}`.trim();
+    row.querySelector(".position-pill").textContent = String(driver.position ?? "");
+    row.querySelector(".driver-name").textContent = driver.player || "";
+    row.querySelector(".last-lap").textContent = `LAST ${formatMs(driver.lap_time_ms)}`;
+
+    const bestLapEl = row.querySelector(".best-lap");
+    bestLapEl.textContent = `BEST ${formatMs(driver.best_lap_ms)}`;
+    bestLapEl.className = fastest ? "best-lap-chip best-lap" : "best-lap";
+
+    const pitChipEl = row.querySelector(".pit-chip");
+    pitChipEl.className = driver.in_pit ? "pit-chip" : "pit-chip hidden";
+
+    row.querySelector(".board-stat").textContent = String(driver.lap ?? "");
+
+    const gapEl = row.querySelector(".board-gap");
+    gapEl.textContent = driver.in_pit ? "PIT" : formatGap(driver);
+    gapEl.className = `board-gap ${driver.position === 1 ? "top" : (fastest ? "best" : "")}`.trim();
+
+    fragment.appendChild(row);
+  });
+
+  for (const [player, element] of rowElements) {
+    if (!nextPlayers.has(player)) {
+      rowElements.delete(player);
+      element.remove();
+    }
+  }
+
+  rows.replaceChildren(fragment);
 }
 
 function render(state) {
@@ -157,31 +244,13 @@ function render(state) {
 
   renderFlag(state);
   renderNotices(state);
+  renderRows(state, globalBestLap);
 
   const leader = state.drivers[0];
   leaderNameEl.textContent = leader ? leader.player : "Waiting...";
   leaderSubEl.textContent = leader
     ? `${state.final_lap_active ? "FINAL LAP" : `Lap ${leader.lap}/${state.total_laps || "--"}`}  BEST ${formatMs(leader.best_lap_ms)}`
-    : "等待过线事件";
-
-  rows.innerHTML = state.drivers.map((driver) => {
-    const fastest = driver.best_lap_ms !== null && driver.best_lap_ms === globalBestLap;
-    return `
-      <div class="board-row ${driver.position === 1 ? "top" : ""} ${driver.in_pit ? "pit" : ""} ${fastest ? "fastest" : ""}">
-        <div class="position-pill">${driver.position}</div>
-        <div class="driver-cell">
-          <div class="driver-name">${escapeHtml(driver.player)}</div>
-          <div class="driver-source">
-            <span>LAST ${formatMs(driver.lap_time_ms)}</span>
-            <span class="${fastest ? "best-lap-chip" : ""}">BEST ${formatMs(driver.best_lap_ms)}</span>
-            ${driver.in_pit ? '<span class="pit-chip">PIT</span>' : ""}
-          </div>
-        </div>
-        <div class="board-stat">${driver.lap}</div>
-        <div class="board-gap ${driver.position === 1 ? "top" : (fastest ? "best" : "")}">${driver.in_pit ? "PIT" : formatGap(driver)}</div>
-      </div>
-    `;
-  }).join("");
+    : "Waiting for timing data";
 }
 
 function connect() {

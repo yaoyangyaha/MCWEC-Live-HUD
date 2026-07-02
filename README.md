@@ -45,6 +45,8 @@ MCWEC_TOTAL_LAPS=20
 - `MCWEC_SESSION` 会话标签，例如 `RACE`、`QUALIFYING`、`SPRINT`
 - `MCWEC_TRACK_NAME` 赛道名称
 - `MCWEC_TOTAL_LAPS` 总圈数（用于计算剩余圈数）
+- `MCWEC_JAVA_LOG_DIR` Java 版客户端日志目录（可选），会跟随读取 `latest.log` 并解析包含 `[HUD]` 的行
+- `MCWEC_JAVA_LOG_FILE` Java 日志文件名（可选，默认 `latest.log`）
 
 项目也附带了一个示例文件 [\.env.example](F:\code\MCWEC-Live-HUD\.env.example)。
 

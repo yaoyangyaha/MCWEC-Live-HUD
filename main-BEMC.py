@@ -16,8 +16,8 @@ from websockets.server import WebSocketServer, WebSocketServerProtocol, serve
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-HTTP_PORT = 10610
-MINECRAFT_WS_PORT = 9178
+HTTP_PORT = 8765
+MINECRAFT_WS_PORT = 8766
 LOGO_CANDIDATES = ("logo.png", "logo.webp", "logo.jpg", "logo.jpeg", "logo.svg")
 
 
@@ -335,8 +335,6 @@ class HUDServer:
         self.browser_clients: set[web.WebSocketResponse] = set()
         self.minecraft_clients: set[WebSocketServerProtocol] = set()
         self.minecraft_ws_server: WebSocketServer | None = None
-        self.java_log_task: asyncio.Task[None] | None = None
-        self.java_log_stop = asyncio.Event()
         self.logger = logging.getLogger("mcwec.hud")
 
     async def handle_index(self, request: web.Request) -> web.FileResponse:
@@ -521,76 +519,6 @@ class HUDServer:
         await self.minecraft_ws_server.wait_closed()
         self.minecraft_ws_server = None
 
-    async def start_java_log_watcher(self) -> None:
-        self.java_log_stop.clear()
-        log_dir = os.getenv("MCWEC_JAVA_LOG_DIR", "").strip()
-        if not log_dir:
-            return
-        log_file = os.getenv("MCWEC_JAVA_LOG_FILE", "latest.log").strip() or "latest.log"
-        log_path = Path(log_dir) / log_file
-        self.java_log_task = asyncio.create_task(self._tail_java_latest_log(log_path))
-        self.logger.info("Java log watcher enabled: %s", log_path)
-
-    async def stop_java_log_watcher(self) -> None:
-        if self.java_log_task is None:
-            return
-        self.java_log_stop.set()
-        try:
-            await self.java_log_task
-        finally:
-            self.java_log_task = None
-
-    async def _tail_java_latest_log(self, log_path: Path) -> None:
-        position = 0
-        last_size = 0
-
-        while not self.java_log_stop.is_set():
-            try:
-                if not log_path.exists():
-                    await asyncio.sleep(0.5)
-                    continue
-
-                size = log_path.stat().st_size
-                if size < last_size:
-                    # Log rotated/truncated.
-                    position = 0
-                last_size = size
-
-                with log_path.open("r", encoding="utf-8", errors="ignore") as f:
-                    f.seek(position)
-                    while True:
-                        line = f.readline()
-                        if not line:
-                            position = f.tell()
-                            break
-                        await self._handle_java_log_line(line.rstrip("\n"))
-
-            except Exception:
-                self.logger.exception("Java log watcher error")
-                await asyncio.sleep(1.0)
-
-            await asyncio.sleep(0.1)
-
-    async def _handle_java_log_line(self, line: str) -> None:
-        if "[HUD]" not in line:
-            return
-        message = line[line.index("[HUD]") :].strip()
-        if not message.startswith("[HUD]"):
-            return
-
-        parsed = self.parse_hud_chat(message, sender="java")
-        if not parsed:
-            return
-
-        event_type = str(parsed.get("type", "lap")).strip().lower()
-        if event_type in {"lap", ""}:
-            result = self.state.upsert_event(parsed)
-        else:
-            result = self.state.apply_control_event(parsed)
-
-        if result.get("accepted"):
-            await self.broadcast_state()
-
     async def broadcast_state(self) -> None:
         snapshot = {"type": "state", "payload": self.build_snapshot()}
         stale_clients = []
@@ -688,12 +616,10 @@ def create_app() -> web.Application:
 async def on_startup(app: web.Application) -> None:
     server: HUDServer = app["hud_server"]
     await server.start_minecraft_server()
-    await server.start_java_log_watcher()
 
 
 async def on_cleanup(app: web.Application) -> None:
     server: HUDServer = app["hud_server"]
-    await server.stop_java_log_watcher()
     await server.stop_minecraft_server()
 
 
